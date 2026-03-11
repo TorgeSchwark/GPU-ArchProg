@@ -25,6 +25,7 @@ add_executable(fft
     sequential_FFT.cpp
     compare_FFT.cpp
     parallel_FFT.cu
+    improved_parallel_FFT.cu
 )
 
 # ----------------------------------------------------

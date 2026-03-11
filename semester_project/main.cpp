@@ -8,6 +8,7 @@
 
 #include "sequential_FFT.h"
 #include "parallel_FFT.h"
+#include "imporved_parallel_FFT.h"
 #include "compare_FFT.h"
 
 using Clock = std::chrono::high_resolution_clock;
@@ -61,7 +62,7 @@ double benchmark_cuda_fft(const std::vector<std::complex<double>>& data, int run
         auto temp = data;
 
         auto start = Clock::now();
-        parallel_fft(temp);
+        parallel_fft_fast(temp);
         auto end = Clock::now();
 
         total += std::chrono::duration<double, std::milli>(end - start).count();
