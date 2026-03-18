@@ -1,7 +1,7 @@
 #include "sequential_FFT.h"
 
 
-void fft(vector<complex<double>>& x) {
+void fft(vector<complex<float>>& x) {
     const size_t N = x.size();
 
     // ---- Bit-Reversal ----
@@ -19,14 +19,14 @@ void fft(vector<complex<double>>& x) {
 
     // ---- Iterative Stages ----
     for (size_t m = 2; m <= N; m <<= 1) {
-        double theta = -2.0 * M_PI / m;
-        complex<double> wm(cos(theta), sin(theta));
+        float theta = -2.0 * M_PI / m;
+        complex<float> wm(cos(theta), sin(theta));
 
         for (size_t k = 0; k < N; k += m) {
-            complex<double> w(1.0, 0.0);
+            complex<float> w(1.0, 0.0);
             for (size_t j = 0; j < m / 2; j++) {
-                complex<double> t = w * x[k + j + m/2];
-                complex<double> u = x[k + j];
+                complex<float> t = w * x[k + j + m/2];
+                complex<float> u = x[k + j];
 
                 x[k + j]         = u + t;
                 x[k + j + m/2]   = u - t;
@@ -38,36 +38,36 @@ void fft(vector<complex<double>>& x) {
 }
 
 
-std::vector<std::complex<double>>
-fftw_reference(const std::vector<std::complex<double>>& input){
+std::vector<std::complex<float>>
+fftw_reference(const std::vector<std::complex<float>>& input)
+{
     int N = input.size();
 
-    fftw_complex* in  = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
-    fftw_complex* out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
+    fftwf_complex* in  = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * N);
+    fftwf_complex* out = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * N);
 
     for (int i = 0; i < N; ++i) {
         in[i][0] = input[i].real();
         in[i][1] = input[i].imag();
     }
 
-    fftw_plan plan = fftw_plan_dft_1d(
+    fftwf_plan plan = fftwf_plan_dft_1d(
         N, in, out,
         FFTW_FORWARD,
         FFTW_ESTIMATE
     );
 
-    fftw_execute(plan);
+    fftwf_execute(plan);
 
-    std::vector<std::complex<double>> result(N);
+    std::vector<std::complex<float>> result(N);
 
     for (int i = 0; i < N; ++i)
         result[i] = {out[i][0], out[i][1]};
 
-    fftw_destroy_plan(plan);
-    fftw_free(in);
-    fftw_free(out);
+    fftwf_destroy_plan(plan);
+    fftwf_free(in);
+    fftwf_free(out);
 
     return result;
 }
-
 

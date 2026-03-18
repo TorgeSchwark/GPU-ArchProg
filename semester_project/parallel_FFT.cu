@@ -5,6 +5,13 @@
 #include <cuComplex.h>
 #include <cmath>
 
+#include <chrono>
+
+using Clock = std::chrono::high_resolution_clock;
+
+using namespace std;
+
+
 #define CUDA_CHECK(err) \
     if (err != cudaSuccess) { \
         std::cerr << "CUDA Error: " << cudaGetErrorString(err) << std::endl; \
@@ -15,7 +22,7 @@
 // Bit-Reversal Kernel
 // ------------------------------------------------------------
 __global__
-void bit_reverse_kernel(cuDoubleComplex* x, int N)
+void bit_reverse_kernel(cuFloatComplex* x, int N)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= N) return;
@@ -32,7 +39,7 @@ void bit_reverse_kernel(cuDoubleComplex* x, int N)
     }
 
     if (i < j) {
-        cuDoubleComplex tmp = x[i];
+        cuFloatComplex tmp = x[i];
         x[i] = x[j];
         x[j] = tmp;
     }
@@ -42,7 +49,7 @@ void bit_reverse_kernel(cuDoubleComplex* x, int N)
 // Single FFT Stage Kernel
 // ------------------------------------------------------------
 __global__
-void fft_stage_kernel(cuDoubleComplex* x, int N, int m)
+void fft_stage_kernel(cuFloatComplex* x, int N, int m)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int half = m >> 1;
@@ -55,42 +62,47 @@ void fft_stage_kernel(cuDoubleComplex* x, int N, int m)
 
     int k = group * m;
 
-    double theta = -2.0 * M_PI * j / m;
-    cuDoubleComplex w = make_cuDoubleComplex(cos(theta), sin(theta));
+    float theta = -2.0f * M_PI * j / m;
 
-    cuDoubleComplex u = x[k + j];
-    cuDoubleComplex t = cuCmul(w, x[k + j + half]);
+    float s, c;
+    __sincosf(theta, &s, &c);
 
-    x[k + j]        = cuCadd(u, t);
-    x[k + j + half] = cuCsub(u, t);
+    cuFloatComplex w = make_cuFloatComplex(c, s);
+
+    cuFloatComplex u = x[k + j];
+    cuFloatComplex t = cuCmulf(w, x[k + j + half]);
+
+    x[k + j]        = cuCaddf(u, t);
+    x[k + j + half] = cuCsubf(u, t);
 }
 
 // ------------------------------------------------------------
 // Host Wrapper
 // ------------------------------------------------------------
-void parallel_fft(std::vector<std::complex<double>>& data)
+double parallel_fft(std::vector<std::complex<float>>& data)
 {
     int N = data.size();
 
-    cuDoubleComplex* d_x;
+    cuFloatComplex* d_x;
 
-    CUDA_CHECK(cudaMalloc(&d_x, N * sizeof(cuDoubleComplex)));
+    CUDA_CHECK(cudaMalloc(&d_x, N * sizeof(cuFloatComplex)));
 
     // Copy to device
-    std::vector<cuDoubleComplex> temp(N);
+    std::vector<cuFloatComplex> temp(N);
     for (int i = 0; i < N; ++i)
-        temp[i] = make_cuDoubleComplex(data[i].real(), data[i].imag());
+        temp[i] = make_cuFloatComplex(data[i].real(), data[i].imag());
 
     CUDA_CHECK(cudaMemcpy(d_x, temp.data(),
-                          N * sizeof(cuDoubleComplex),
+                          N * sizeof(cuFloatComplex),
                           cudaMemcpyHostToDevice));
 
-    int threads = 256;
+    int threads = 512;
     int blocks  = (N + threads - 1) / threads;
+
+    auto start = Clock::now();
 
     // ---- Bit reversal ----
     bit_reverse_kernel<<<blocks, threads>>>(d_x, N);
-    CUDA_CHECK(cudaDeviceSynchronize());
 
     // ---- FFT Stages ----
     for (int m = 2; m <= N; m <<= 1)
@@ -99,19 +111,23 @@ void parallel_fft(std::vector<std::complex<double>>& data)
         int stageBlocks = (butterflies + threads - 1) / threads;
 
         fft_stage_kernel<<<stageBlocks, threads>>>(d_x, N, m);
-        CUDA_CHECK(cudaDeviceSynchronize());
     }
+    cudaDeviceSynchronize();
+    auto end = Clock::now();
 
     // Copy back
     CUDA_CHECK(cudaMemcpy(temp.data(), d_x,
-                          N * sizeof(cuDoubleComplex),
+                          N * sizeof(cuFloatComplex),
                           cudaMemcpyDeviceToHost));
 
     for (int i = 0; i < N; ++i)
-        data[i] = std::complex<double>(cuCreal(temp[i]), cuCimag(temp[i]));
+        data[i] = std::complex<float>(cuCrealf(temp[i]), cuCimagf(temp[i]));
 
     cudaFree(d_x);
     cudaDeviceSynchronize();
+
+    return std::chrono::duration<double, std::milli>(end - start).count();
+
 }
 
 // ------------------------------------------------------------

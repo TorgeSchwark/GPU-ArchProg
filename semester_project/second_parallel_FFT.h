@@ -1,14 +1,13 @@
-#ifndef IMPROVED_PARALLEL_FFT_H
-#define IMPROVED_PARALLEL_FFT_H
+#ifndef SECOND_PARALLEL_FFT_H
+#define SECOND_PARALLEL_FFT_H
 
 #include <vector>
 #include <complex>
-
 
 // ------------------------------------------------------------
 // CUDA Parallel FFT (Host Wrapper)
 // Implemented in parallel_FFT.cu
 // ------------------------------------------------------------
-double parallel_fft_fast(std::vector<std::complex<float>>& data);
+float parallel_fft_base_twiddle(std::vector<std::complex<float>>& data);
 
 #endif // PARALLEL_FFT_H

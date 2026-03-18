@@ -9,9 +9,9 @@
 
 using namespace std;
 
-void fft(vector<complex<double>>& x);
+void fft(vector<complex<float>>& x);
 
-std::vector<std::complex<double>>
-fftw_reference(const std::vector<std::complex<double>>& input);
+std::vector<std::complex<float>>
+fftw_reference(const std::vector<std::complex<float>>& input);
 
 #endif

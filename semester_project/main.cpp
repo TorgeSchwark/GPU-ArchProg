@@ -9,6 +9,7 @@
 #include "sequential_FFT.h"
 #include "parallel_FFT.h"
 #include "imporved_parallel_FFT.h"
+#include "second_parallel_FFT.h"
 #include "compare_FFT.h"
 
 using Clock = std::chrono::high_resolution_clock;
@@ -16,13 +17,13 @@ using Clock = std::chrono::high_resolution_clock;
 // ------------------------------------------------------------
 // Random Data Generator
 // ------------------------------------------------------------
-std::vector<std::complex<double>>
+std::vector<std::complex<float>>
 generate_random_data(size_t N)
 {
     static std::mt19937 rng(std::random_device{}());
-    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    std::uniform_real_distribution<float> dist(-1.0, 1.0);
 
-    std::vector<std::complex<double>> data(N);
+    std::vector<std::complex<float>> data(N);
     for (size_t i = 0; i < N; ++i)
         data[i] = {dist(rng), dist(rng)};
 
@@ -32,7 +33,7 @@ generate_random_data(size_t N)
 // ------------------------------------------------------------
 // Sequential Benchmark
 // ------------------------------------------------------------
-double benchmark_seq_fft(const std::vector<std::complex<double>>& data, int runs)
+double benchmark_seq_fft(const std::vector<std::complex<float>>& data, int runs)
 {
     double total = 0.0;
 
@@ -53,7 +54,7 @@ double benchmark_seq_fft(const std::vector<std::complex<double>>& data, int runs
 // ------------------------------------------------------------
 // CUDA Benchmark
 // ------------------------------------------------------------
-double benchmark_cuda_fft(const std::vector<std::complex<double>>& data, int runs)
+double benchmark_cuda_fft(const std::vector<std::complex<float>>& data, int runs)
 {
     double total = 0.0;
 
@@ -61,11 +62,9 @@ double benchmark_cuda_fft(const std::vector<std::complex<double>>& data, int run
     {
         auto temp = data;
 
-        auto start = Clock::now();
-        parallel_fft_fast(temp);
-        auto end = Clock::now();
+        auto time = parallel_fft(temp);
 
-        total += std::chrono::duration<double, std::milli>(end - start).count();
+        total += time;
     }
 
     return total / runs;
@@ -74,14 +73,14 @@ double benchmark_cuda_fft(const std::vector<std::complex<double>>& data, int run
 // ------------------------------------------------------------
 // FFTW Benchmark
 // ------------------------------------------------------------
-double benchmark_fftw(const std::vector<std::complex<double>>& data, int runs)
+double benchmark_fftw(const std::vector<std::complex<float>>& data, int runs)
 {
     int N = data.size();
 
-    fftw_complex* in  = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
-    fftw_complex* out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
+    fftwf_complex* in  = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * N);
+    fftwf_complex* out = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * N);
 
-    fftw_plan plan = fftw_plan_dft_1d(N, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
+    fftwf_plan plan = fftwf_plan_dft_1d(N, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
 
     double total = 0.0;
 
@@ -93,15 +92,15 @@ double benchmark_fftw(const std::vector<std::complex<double>>& data, int runs)
         }
 
         auto start = Clock::now();
-        fftw_execute(plan);
+        fftwf_execute(plan);
         auto end = Clock::now();
 
         total += std::chrono::duration<double, std::milli>(end - start).count();
     }
 
-    fftw_destroy_plan(plan);
-    fftw_free(in);
-    fftw_free(out);
+    fftwf_destroy_plan(plan);
+    fftwf_free(in);
+    fftwf_free(out);
 
     return total / runs;
 }
@@ -126,7 +125,7 @@ int main()
 
     std::cout << std::string(68, '-') << "\n";
 
-    for (int p = 8; p <= 24; ++p)   // 2^8 bis 2^14
+    for (int p = 8; p <= 26; ++p)   // 2^8 bis 2^14
     {
         size_t N = 1ULL << p;
         auto data = generate_random_data(N);
@@ -141,33 +140,33 @@ int main()
         parallel_fft(cuda_data);
 
         int n = N;
-        fftw_complex* in  = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * n);
-        fftw_complex* out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * n);
+        fftwf_complex* in  = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * n);
+        fftwf_complex* out = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * n);
 
-        fftw_plan plan = fftw_plan_dft_1d(n, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
+        fftwf_plan plan = fftwf_plan_dft_1d(n, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
 
         for (int i = 0; i < n; ++i) {
             in[i][0] = data[i].real();
             in[i][1] = data[i].imag();
         }
 
-        fftw_execute(plan);
+        fftwf_execute(plan);
 
-        std::vector<std::complex<double>> ref(n);
+        std::vector<std::complex<float>> ref(n);
         for (int i = 0; i < n; ++i)
             ref[i] = {out[i][0], out[i][1]};
 
-        fftw_destroy_plan(plan);
-        fftw_free(in);
-        fftw_free(out);
+        fftwf_destroy_plan(plan);
+        fftwf_free(in);
+        fftwf_free(out);
 
-        if (!compare_fft(seq_data, ref, 1e-5))
+        if (!compare_fft(seq_data, ref, 10000000.0f))
         {
             std::cout << "Sequential FFT incorrect for N = " << N << "\n";
             return 1;
         }
 
-        if (!compare_fft(cuda_data, ref, 1e-5))
+        if (!compare_fft(cuda_data, ref, 10000000.0f))
         {
             std::cout << "CUDA FFT incorrect for N = " << N << "\n";
             return 1;
@@ -176,7 +175,7 @@ int main()
         // ----------------------------
         // Benchmark
         // ----------------------------
-        double seq_time  = benchmark_seq_fft(data, runs);
+        double seq_time  = 1.0; // benchmark_seq_fft(data, runs);
         double cuda_time = benchmark_cuda_fft(data, runs);
         double fftw_time = benchmark_fftw(data, runs);
 

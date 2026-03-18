@@ -9,9 +9,9 @@
 using namespace std;
 
 bool compare_fft(
-    const std::vector<std::complex<double>>& a,
-    const std::vector<std::complex<double>>& b,
-    double tolerance
+    const std::vector<std::complex<float>>& a,
+    const std::vector<std::complex<float>>& b,
+    float tolerance
 );
 
 #endif

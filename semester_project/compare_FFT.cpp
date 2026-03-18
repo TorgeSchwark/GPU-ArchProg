@@ -1,9 +1,9 @@
 #include "compare_FFT.h"
 
 bool compare_fft(
-    const std::vector<std::complex<double>>& a,
-    const std::vector<std::complex<double>>& b,
-    double tolerance
+    const std::vector<std::complex<float>>& a,
+    const std::vector<std::complex<float>>& b,
+    float tolerance
 ) {
     if (a.size() != b.size())
         return false;
@@ -11,7 +11,7 @@ bool compare_fft(
     bool ok = true;
 
     for (size_t i = 0; i < a.size(); ++i) {
-        double diff = std::abs(a[i] - b[i]);
+        float diff = std::abs(a[i] - b[i]);
 
         if (diff > tolerance) {
             std::cout << "Mismatch at index " << i << "\n";

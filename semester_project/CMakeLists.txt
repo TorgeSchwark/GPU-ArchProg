@@ -26,6 +26,7 @@ add_executable(fft
     compare_FFT.cpp
     parallel_FFT.cu
     improved_parallel_FFT.cu
+    second_parallel_FFT.cu
 )
 
 # ----------------------------------------------------
@@ -43,7 +44,7 @@ set_property(TARGET fft PROPERTY CUDA_ARCHITECTURES 75)
 # FFTW über pkg-config
 # ----------------------------------------------------
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFTW REQUIRED fftw3)
+pkg_check_modules(FFTW REQUIRED fftw3f)
 
 target_include_directories(fft PRIVATE ${FFTW_INCLUDE_DIRS})
 target_link_libraries(fft PRIVATE ${FFTW_LIBRARIES})
