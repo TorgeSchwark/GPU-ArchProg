@@ -62,7 +62,7 @@ void fft_stage_kernel(cuFloatComplex* x, int N, int m)
 
     int k = group * m;
 
-    float theta = -2.0f * M_PI * j / m;
+    float theta = -2.0f * M_PI * j / m; // precompute 1/m ???
 
     float s, c;
     __sincosf(theta, &s, &c);

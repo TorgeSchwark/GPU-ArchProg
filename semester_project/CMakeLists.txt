@@ -27,6 +27,7 @@ add_executable(fft
     parallel_FFT.cu
     improved_parallel_FFT.cu
     second_parallel_FFT.cu
+    stockham_FFT.cu
 )
 
 # ----------------------------------------------------
@@ -48,14 +49,17 @@ pkg_check_modules(FFTW REQUIRED fftw3f)
 
 target_include_directories(fft PRIVATE ${FFTW_INCLUDE_DIRS})
 target_link_libraries(fft PRIVATE ${FFTW_LIBRARIES})
-
+target_link_libraries(fft PRIVATE cufft)
 # ----------------------------------------------------
 # Compiler-Warnungen
 # ----------------------------------------------------
 if (MSVC)
     target_compile_options(fft PRIVATE /W4)
 else()
-    target_compile_options(fft PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(fft PRIVATE
+        -Wall -Wextra -Wpedantic
+        $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>
+    )
 endif()
 
 # ----------------------------------------------------
@@ -65,6 +69,9 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
     if (MSVC)
         target_compile_options(fft PRIVATE /O2)
     else()
-        target_compile_options(fft PRIVATE -O3 -march=native)
+        target_compile_options(fft PRIVATE
+            -O3 -march=native
+            $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>
+        )
     endif()
 endif()

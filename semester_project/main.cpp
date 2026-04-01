@@ -5,12 +5,15 @@
 #include <chrono>
 #include <cmath>
 #include <fftw3.h>
+#include <cufft.h>
+#include <cuda_runtime.h>
 
 #include "sequential_FFT.h"
 #include "parallel_FFT.h"
 #include "imporved_parallel_FFT.h"
 #include "second_parallel_FFT.h"
 #include "compare_FFT.h"
+#include "stockham_FFT.h"
 
 using Clock = std::chrono::high_resolution_clock;
 
@@ -51,6 +54,8 @@ double benchmark_seq_fft(const std::vector<std::complex<float>>& data, int runs)
     return total / runs;
 }
 
+
+
 // ------------------------------------------------------------
 // CUDA Benchmark
 // ------------------------------------------------------------
@@ -66,6 +71,40 @@ double benchmark_cuda_fft(const std::vector<std::complex<float>>& data, int runs
 
         total += time;
     }
+
+    return total / runs;
+}
+
+double benchmark_cufft(const std::vector<std::complex<float>>& data, int runs)
+{
+    int N = data.size();
+
+    cufftComplex* d_data;
+    cudaMalloc(&d_data, sizeof(cufftComplex) * N);
+
+    cufftHandle plan;
+    cufftPlan1d(&plan, N, CUFFT_C2C, 1);
+
+    double total = 0.0;
+
+    for (int r = 0; r < runs; ++r)
+    {
+        // Copy input to GPU
+        cudaMemcpy(d_data, data.data(), sizeof(cufftComplex) * N, cudaMemcpyHostToDevice);
+
+        auto start = Clock::now();
+
+        cufftExecC2C(plan, d_data, d_data, CUFFT_FORWARD);
+
+        cudaDeviceSynchronize();
+
+        auto end = Clock::now();
+
+        total += std::chrono::duration<double, std::milli>(end - start).count();
+    }
+
+    cufftDestroy(plan);
+    cudaFree(d_data);
 
     return total / runs;
 }
@@ -121,6 +160,22 @@ double benchmark_base_twiddle_fft(const std::vector<std::complex<float>>& data, 
     return total / runs;
 }
 
+double benchmark_stockham_fft(const std::vector<std::complex<float>>& data, int runs)
+{
+    double total = 0.0;
+
+    for (int i = 0; i < runs; ++i)
+    {
+        auto temp = data;
+
+        auto time = parallel_fft_stockham(temp);
+
+        total += time;
+    }
+
+    return total / runs;
+}
+
 
 double benchmark_precomputed(const std::vector<std::complex<float>>& data, int runs)
 {
@@ -151,11 +206,13 @@ int main()
               << std::setw(16) << "seque (ms)"
               << std::setw(16) << "CUDA (ms)"
               << std::setw(16) << "FFTW (ms)"
-              << std::setw(16) << "CUDA TWIDLE(MS)"
+              << std::setw(16) << "CUDA TWIDLE (ms)"
+              << std::setw(16) << "CUDA Library (ms)"
               << std::setw(16) << "Seq x"
               << std::setw(16) << "CUDA x"
               << std::setw(16) << "CUDA TWIDLE x"
               << std::setw(16) << "CUDA PRECOMPUTED"
+              << std::setw(16) << "CUDA stockham"
               << "\n";
 
     std::cout << std::string(68, '-') << "\n";
@@ -215,6 +272,8 @@ int main()
         double twiddle_time = benchmark_base_twiddle_fft(data, runs);
         double seq_time = benchmark_seq_fft(data, runs);
         double precomputed = benchmark_precomputed(data, runs);
+        double cuda_library = benchmark_cufft(data, runs);
+        double stockham = benchmark_stockham_fft(data, runs);
 
 
 
@@ -224,10 +283,13 @@ int main()
                   << std::setw(16) << cuda_time
                   << std::setw(16) << fftw_time
                   << std::setw(16) << twiddle_time
-                  << std::setw(16) << seq_time / fftw_time
-                  << std::setw(16) << cuda_time / fftw_time
-                  << std::setw(16) << twiddle_time / fftw_time
-                  << std::setw(16) << precomputed / fftw_time
+                  << std::setw(16) << cuda_library
+                  << std::setw(16) << seq_time / cuda_library
+                  << std::setw(16) << cuda_time / cuda_library
+                  << std::setw(16) << twiddle_time / cuda_library
+                  << std::setw(16) << precomputed / cuda_library
+                  << std::setw(16) << stockham / cuda_library
+
                   << "\n";
     }
 

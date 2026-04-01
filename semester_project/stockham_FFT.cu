@@ -1,3 +1,5 @@
+#include "stockham_FFT.h"
+
 #include <iostream>
 #include <vector>
 #include <complex>
@@ -36,25 +38,6 @@ int reverse_bits(int x, int logN)
 {
     return __brev(x) >> (32 - logN);
 }
-
-
-
-__global__
-void bit_reverse_kernel_base(cuFloatComplex* x, int N, int logN)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= N) return;
-
-    int j = reverse_bits(i, logN);
-
-    if (i < j)
-    {
-        cuFloatComplex tmp = x[i];
-        x[i] = x[j];
-        x[j] = tmp;
-    }
-}
-
 __device__ __forceinline__
 cuFloatComplex cpow_int(cuFloatComplex base, int exp)
 {
@@ -71,52 +54,65 @@ cuFloatComplex cpow_int(cuFloatComplex base, int exp)
 
     return result;
 }
-
+// ------------------------------------------------------------
+// Stockham FFT Kernel
+// ------------------------------------------------------------
 __global__
-void fft_stage_kernel_base(
-    cuFloatComplex* __restrict__ x,
+void fft_stage_kernel_stockham(
+    const cuFloatComplex* __restrict__ in,
+    cuFloatComplex* __restrict__ out,
     cuFloatComplex base_twiddle,
     int N,
     int m,
-    int half,
-    int log2_half,
-    int butterflies
-    )
+    int log_m)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= N) return;
 
-    if (tid >= butterflies) return;
+    int half = m >> 1;
 
-    int group = tid >> log2_half;
-    int j     = tid & (half - 1);
+    int j = tid & (m - 1);        // position in group
+    int k = tid >> log_m; // group index
 
-    int base = group * m;
+    int j_mod = j & (half - 1);
 
-    int i1 = base + j;
+    // indices in input
+    int i1 = k * m + j_mod;
     int i2 = i1 + half;
 
-    cuFloatComplex u = x[i1];
-    cuFloatComplex v = x[i2];
+    cuFloatComplex u = in[i1];
+    cuFloatComplex v = in[i2];
 
-    // compute twiddle
+    // twiddle
     cuFloatComplex w = cpow_int(base_twiddle, j);
 
     cuFloatComplex t = cmul(w, v);
 
-    x[i1] = cuCaddf(u, t);
-    x[i2] = cuCsubf(u, t);
+
+    // output index (linear, coalesced)
+    int out_idx = tid;
+
+    if (j < half)
+        out[out_idx] = cuCaddf(u, t);
+    else
+        out[out_idx] = cuCsubf(u, t);
 }
 
-float parallel_fft_base_twiddle(std::vector<std::complex<float>>& data)
+// ------------------------------------------------------------
+// Stockham FFT Wrapper
+// ------------------------------------------------------------
+float parallel_fft_stockham(std::vector<std::complex<float>>& data)
 {
     int N = data.size();
 
-    cuFloatComplex* d_x;
+    cuFloatComplex* d_in;
+    cuFloatComplex* d_out;
 
-    CUDA_CHECK(cudaMalloc(&d_x, N * sizeof(cuFloatComplex)));
+    CUDA_CHECK(cudaMalloc(&d_in,  N * sizeof(cuFloatComplex)));
+    CUDA_CHECK(cudaMalloc(&d_out, N * sizeof(cuFloatComplex)));
 
     CUDA_CHECK(cudaMemcpy(
-        d_x,
+        d_in,
         reinterpret_cast<cuFloatComplex*>(data.data()),
         N * sizeof(cuFloatComplex),
         cudaMemcpyHostToDevice));
@@ -124,79 +120,42 @@ float parallel_fft_base_twiddle(std::vector<std::complex<float>>& data)
     int threads = 512;
     int blocks  = (N + threads - 1) / threads;
 
-
-    int logN = __builtin_ctz(N);
-
-    bit_reverse_kernel_base<<<blocks, threads>>>(d_x, N, logN);
-    CUDA_CHECK(cudaDeviceSynchronize());
     auto start = Clock::now();
 
-    int stage = 0;
-
+    // stages
     for (int m = 2; m <= N; m <<= 1)
     {
-        int half = m >> 1;
-
-        int butterflies = N >> 1;
-
-        int stageBlocks =
-            (butterflies + threads - 1) / threads;
-
-        // compute base twiddle
+        int log_m = __builtin_ctz(m);
         double angle = -2.0 * M_PI / m;
 
         cuFloatComplex base_twiddle =
             make_cuFloatComplex(cos(angle), sin(angle));
-        int log_half = __builtin_ctz(half);  // oder __builtin_ctz(half)
-
-        fft_stage_kernel_base<<<stageBlocks, threads>>>(
-            d_x,
+        fft_stage_kernel_stockham<<<blocks, threads>>>(
+            d_in,
+            d_out,
             base_twiddle,
             N,
             m,
-            half,
-            log_half,
-            butterflies);
+            log_m);
 
-
-        stage++;
+        // swap buffers
+        cuFloatComplex* tmp = d_in;
+        d_in  = d_out;
+        d_out = tmp;
     }
-    cudaDeviceSynchronize();
+
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     auto end = Clock::now();
 
-
     CUDA_CHECK(cudaMemcpy(
         reinterpret_cast<cuFloatComplex*>(data.data()),
-        d_x,
+        d_in,
         N * sizeof(cuFloatComplex),
         cudaMemcpyDeviceToHost));
 
-    cudaFree(d_x);
+    cudaFree(d_in);
+    cudaFree(d_out);
 
     return std::chrono::duration<double, std::milli>(end - start).count();
-
 }
-// ------------------------------------------------------------
-// Test
-// ------------------------------------------------------------
-#ifdef TEST_PARALLEL_FFT
-
-int main()
-{
-    const int N = 1024;
-
-    std::vector<std::complex<double>> data(N);
-
-    for (int i = 0; i < N; ++i)
-        data[i] = {1.0, 0.0};
-
-    parallel_fft_fast(data);
-
-    for (int i = 0; i < 10; ++i)
-        std::cout << data[i] << std::endl;
-
-    return 0;
-}
-
-#endif
