@@ -105,6 +105,38 @@ double benchmark_fftw(const std::vector<std::complex<float>>& data, int runs)
     return total / runs;
 }
 
+double benchmark_base_twiddle_fft(const std::vector<std::complex<float>>& data, int runs)
+{
+    double total = 0.0;
+
+    for (int i = 0; i < runs; ++i)
+    {
+        auto temp = data;
+
+        auto time = parallel_fft_base_twiddle(temp);
+
+        total += time;
+    }
+
+    return total / runs;
+}
+
+
+double benchmark_precomputed(const std::vector<std::complex<float>>& data, int runs)
+{
+    double total = 0.0;
+
+    for (int i = 0; i < runs; ++i)
+    {
+        auto temp = data;
+
+        auto time = parallel_fft_fast(temp);
+
+        total += time;
+    }
+
+    return total / runs;
+}
 // ------------------------------------------------------------
 // MAIN
 // ------------------------------------------------------------
@@ -115,12 +147,15 @@ int main()
     const int runs = 10;
 
     std::cout << std::left
-              << std::setw(8)  << "N"
-              << std::setw(12) << "Seq (ms)"
-              << std::setw(12) << "CUDA (ms)"
-              << std::setw(12) << "FFTW (ms)"
-              << std::setw(12) << "Seq x"
-              << std::setw(12) << "CUDA x"
+              << std::setw(16)  << "N"
+              << std::setw(16) << "seque (ms)"
+              << std::setw(16) << "CUDA (ms)"
+              << std::setw(16) << "FFTW (ms)"
+              << std::setw(16) << "CUDA TWIDLE(MS)"
+              << std::setw(16) << "Seq x"
+              << std::setw(16) << "CUDA x"
+              << std::setw(16) << "CUDA TWIDLE x"
+              << std::setw(16) << "CUDA PRECOMPUTED"
               << "\n";
 
     std::cout << std::string(68, '-') << "\n";
@@ -175,17 +210,24 @@ int main()
         // ----------------------------
         // Benchmark
         // ----------------------------
-        double seq_time  = 1.0; // benchmark_seq_fft(data, runs);
         double cuda_time = benchmark_cuda_fft(data, runs);
         double fftw_time = benchmark_fftw(data, runs);
+        double twiddle_time = benchmark_base_twiddle_fft(data, runs);
+        double seq_time = benchmark_seq_fft(data, runs);
+        double precomputed = benchmark_precomputed(data, runs);
+
+
 
         std::cout << std::left
-                  << std::setw(8)  << N
-                  << std::setw(12) << std::fixed << std::setprecision(4) << seq_time
-                  << std::setw(12) << cuda_time
-                  << std::setw(12) << fftw_time
-                  << std::setw(12) << seq_time / fftw_time
-                  << std::setw(12) << cuda_time / fftw_time
+                  << std::setw(16)  << N
+                  << std::setw(16) << std::fixed << std::setprecision(4) << seq_time
+                  << std::setw(16) << cuda_time
+                  << std::setw(16) << fftw_time
+                  << std::setw(16) << twiddle_time
+                  << std::setw(16) << seq_time / fftw_time
+                  << std::setw(16) << cuda_time / fftw_time
+                  << std::setw(16) << twiddle_time / fftw_time
+                  << std::setw(16) << precomputed / fftw_time
                   << "\n";
     }
 

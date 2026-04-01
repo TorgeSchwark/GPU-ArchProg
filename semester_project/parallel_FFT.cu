@@ -99,10 +99,12 @@ double parallel_fft(std::vector<std::complex<float>>& data)
     int threads = 512;
     int blocks  = (N + threads - 1) / threads;
 
-    auto start = Clock::now();
 
     // ---- Bit reversal ----
     bit_reverse_kernel<<<blocks, threads>>>(d_x, N);
+
+    auto start = Clock::now();
+
 
     // ---- FFT Stages ----
     for (int m = 2; m <= N; m <<= 1)

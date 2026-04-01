@@ -124,12 +124,12 @@ float parallel_fft_base_twiddle(std::vector<std::complex<float>>& data)
     int threads = 512;
     int blocks  = (N + threads - 1) / threads;
 
-    auto start = Clock::now();
 
     int logN = __builtin_ctz(N);
 
     bit_reverse_kernel_base<<<blocks, threads>>>(d_x, N, logN);
     CUDA_CHECK(cudaDeviceSynchronize());
+    auto start = Clock::now();
 
     int stage = 0;
 

@@ -60,7 +60,6 @@ not measuring pre calculations:
 
 
 Base twiddles:
-
 N       Seq (ms)    CUDA (ms)   FFTW (ms)   Seq x       CUDA x      
 --------------------------------------------------------------------
 256     1.0000      0.2512      0.0004      2809.7780   705.8623    

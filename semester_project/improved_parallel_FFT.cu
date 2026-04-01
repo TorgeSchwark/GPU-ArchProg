@@ -178,7 +178,6 @@ double parallel_fft_fast(std::vector<std::complex<float>>& data)
     // --------------------------------------------------------
     // Bit reversal messure time!
     // --------------------------------------------------------
-    auto start = Clock::now();
 
     int logN = __builtin_ctz(N);
 
@@ -187,7 +186,8 @@ double parallel_fft_fast(std::vector<std::complex<float>>& data)
     // --------------------------------------------------------
     // FFT stages
     // --------------------------------------------------------
-    int stage = 0;
+    int stage = 0;  
+    auto start = Clock::now();
 
     for (int m = 2; m <= N; m <<= 1)
     {
