@@ -40,85 +40,66 @@ __global__ void tri_kernel(float* A, float* B, float* C, int N, int offset)
 
     int tx = threadIdx.x;
 
-    // load block (coalesced)
-    for (int j = tx; j < 32; j += blockDim.x)
-        sB[j] = B[offset + j];
+    // load B
+    sB[tx] = B[offset + tx];
 
+    // load A block
+    const float* Arow = A + offset * N + offset;
+
+    #pragma unroll
     for (int i = 0; i < 32; i++)
     {
-        int row = offset + i;
-        int col = offset + tx;
-
-        if (tx < 32)
-            sA[i][tx] = A[row * N + col];
+        sA[i][tx] = Arow[tx];
+        Arow += N;
     }
 
-    __syncthreads();
+    __syncwarp();
 
-    // backward substitution inside block
+    #pragma unroll
     for (int i = 31; i >= 0; i--)
     {
         float sum = 0.0f;
 
-        // parallel über Threads
-        for (int j = i+1 + tx; j < 32; j += blockDim.x)
-            sum += sA[i][j] * sB[j];
+        if (tx > i)
+            sum = sA[i][tx] * sB[tx];
 
-        unsigned mask = __ballot_sync(0xffffffff, (i+1 + tx) < 32);
+        unsigned mask = __ballot_sync(0xffffffff, tx > i);
 
-        for (int offset2 = 16; offset2 > 0; offset2 /= 2)
-            sum += __shfl_down_sync(mask, sum, offset2);
+        for (int d = 16; d > 0; d >>= 1)
+            sum += __shfl_down_sync(mask, sum, d);
 
         if (tx == 0)
             sB[i] = (C[offset+i] - sum) / sA[i][i];
 
-        __syncthreads();
-
+        __syncwarp();
     }
 
     // store back
-    for (int i = tx; i < 32; i += blockDim.x)
-        B[offset + i] = sB[i];
+    B[offset + tx] = sB[tx];
 }
 
 __global__ void rect_kernel(float* A, float* B, float* C, int N, int offset)
 {
-    float sB[32];
+    int lane = threadIdx.x & 31;
+    int warp_id = threadIdx.x >> 5;
 
-    int tx = threadIdx.x;
-    int lane = tx % 32;
-    int warp_id = tx / 32;
+    int row = blockIdx.x * 8 + warp_id;
 
-    int warps_per_block = blockDim.x / 32;
-    int row = blockIdx.x * warps_per_block + warp_id;
-
-    // load B once
-    if (tx < 32)
-        sB[tx] = B[offset + tx];
-
-    __syncthreads();
-
-    if (row >= offset) return;
-
-    float sum = 0.0f;
-
-    const float* Arow = &A[row * N + offset];
-
-    // jeder Thread verarbeitet mehrere Elemente
-    #pragma unroll
-    for (int j = lane; j < 32; j += 32)
+    if (row < offset)
     {
-        sum += Arow[j] * sB[j];
+        const float* Arow = A + row * N + offset;
+
+        float b = B[offset + lane];
+        float sum = Arow[lane] * b;
+
+        // warp reduction
+        for (int d = 16; d > 0; d >>= 1)
+            sum += __shfl_down_sync(0xffffffff, sum, d);
+
+        if (lane == 0)
+            C[row] -= sum;
     }
-
-    // warp reduction
-    for (int d = 16; d > 0; d /= 2)
-        sum += __shfl_down_sync(0xffffffff, sum, d);
-
-    if (lane == 0)
-        C[row] -= sum;
 }
-
   /*
   vylepsete vykonnost tohoto volani
   improve performance of this call
@@ -127,6 +108,8 @@ __global__ void rect_kernel(float* A, float* B, float* C, int N, int offset)
 void problem(float* devA, float* devB, float* devC, int N)
 {
     const int BS = 32;
+    const int THREADS = 256;
+
 
     for (int offset = N - BS; offset >= 0; offset -= BS)
     {
@@ -134,10 +117,7 @@ void problem(float* devA, float* devB, float* devC, int N)
         
         tri_kernel<<<1, BS>>>(devA, devB, devC, N, offset);
 
-        const int THREADS = 256;
-
-        int warps_per_block = THREADS / 32;
-        int blocks = (offset + warps_per_block - 1) / warps_per_block;
+        int blocks = (offset + 7) >> 3;
 
         rect_kernel<<<blocks, THREADS>>>(devA, devB, devC, N, offset);
     }
