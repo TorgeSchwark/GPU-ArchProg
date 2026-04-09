@@ -1,0 +1,13 @@
+Device name: NVIDIA GeForce RTX 4070 Ti
+CC: 8.9
+#SM: 60
+3072 Time taken:  1.17955 ms
+3072 errors=0
+14336 Time taken:  4.03549 ms
+14336 errors=0
+25600 Time taken:  8.51046 ms
+25600 errors=0
+Total GPU time 13.7255 ms
+SJ1 10.7537 points
+
+compiler: nvcc -O3 -use_fast_math -lineinfo -Xptxas -O3 -Xptxas -dlcm=ca      -arch=sm_80      sj1_2026temp_improve.cu -o prog

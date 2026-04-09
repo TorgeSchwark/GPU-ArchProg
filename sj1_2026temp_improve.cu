@@ -4,7 +4,6 @@
 #include <math.h>
 
 
-
 static void HandleError( cudaError_t err, const char *file, int line ) {
 
   if (err != cudaSuccess) {
@@ -33,52 +32,68 @@ int find(char *s1,char *s2)
 
 // muzete pridat vlastni funkce nebo datove struktury,
 // you can also add new functions or data structures
-__global__ void tri_kernel(float* A, float* B, float* C, int N, int offset)
-{ 
-    __shared__ float sA[32][33];
-    __shared__ float sB[32];
+#define WARP_SIZE 32
+#define FULL_MASK 0xffffffff
 
-    int tx = threadIdx.x;
+__global__ void tri_kernel(const float* __restrict__ A,
+                           float* __restrict__ B,
+                           const float* __restrict__ C,
+                           int N, int offset)
+{
+    // --- shared memory ---
+    __shared__ float sA[WARP_SIZE][WARP_SIZE + 1]; // padded
+    __shared__ float sB[WARP_SIZE];
 
-    // load B
-    sB[tx] = B[offset + tx];
+    const int tx = threadIdx.x;   // 0..31
 
-    // load A block
-    const float* Arow = A + offset * N + offset;
+    // --- pointer precompute ---
+    const float* __restrict__ Abase = A + offset * N + offset;
+    float* __restrict__ Bptr = B + offset;
+    const float* __restrict__ Cptr = C + offset;
 
+    // --- load B ---
+    sB[tx] = Bptr[tx];
+
+    // --- load A tile (coalesced) ---
     #pragma unroll
-    for (int i = 0; i < 32; i++)
+    for (int i = 0; i < WARP_SIZE; i++)
     {
-        sA[i][tx] = Arow[tx];
-        Arow += N;
+        sA[i][tx] = Abase[tx];
+        Abase += N;
     }
 
-    __syncwarp();
+    __syncwarp();  // warp-level sync reicht
 
+    // --- backward substitution ---
     #pragma unroll
-    for (int i = 31; i >= 0; i--)
+    for (int i = WARP_SIZE - 1; i >= 0; i--)
     {
         float sum = 0.0f;
 
+        // nur Threads > i arbeiten
         if (tx > i)
             sum = sA[i][tx] * sB[tx];
 
-        unsigned mask = __ballot_sync(0xffffffff, tx > i);
+        // aktive Threads maskieren
+        unsigned mask = __ballot_sync(FULL_MASK, tx > i);
 
-        for (int d = 16; d > 0; d >>= 1)
+        // warp reduction
+        #pragma unroll
+        for (int d = WARP_SIZE / 2; d > 0; d >>= 1)
             sum += __shfl_down_sync(mask, sum, d);
 
+        // write result
         if (tx == 0)
-            sB[i] = (C[offset+i] - sum) / sA[i][i];
+            sB[i] = (Cptr[i] - sum) / sA[i][i];
 
         __syncwarp();
     }
 
-    // store back
-    B[offset + tx] = sB[tx];
+    // --- store result ---
+    Bptr[tx] = sB[tx];
 }
 
-__global__ void rect_kernel(float* A, float* B, float* C, int N, int offset)
+__global__ void rect_kernel(float* __restrict__  A, float* __restrict__  B, float* __restrict__  C, int N, int offset)
 {
     int lane = threadIdx.x & 31;
     int warp_id = threadIdx.x >> 5;
@@ -87,7 +102,7 @@ __global__ void rect_kernel(float* A, float* B, float* C, int N, int offset)
 
     if (row < offset)
     {
-        const float* Arow = A + row * N + offset;
+        const float* __restrict__ Arow = A + row * N + offset;
 
         float b = B[offset + lane];
         float sum = Arow[lane] * b;
@@ -107,15 +122,14 @@ __global__ void rect_kernel(float* A, float* B, float* C, int N, int offset)
 
 void problem(float* devA, float* devB, float* devC, int N)
 {
-    const int BS = 32;
     const int THREADS = 256;
 
 
-    for (int offset = N - BS; offset >= 0; offset -= BS)
+    for (int offset = N - WARP_SIZE; offset >= 0; offset -= WARP_SIZE)
     {
         // 1. triangular solve
         
-        tri_kernel<<<1, BS>>>(devA, devB, devC, N, offset);
+        tri_kernel<<<1, WARP_SIZE>>>(devA, devB, devC, N, offset);
 
         int blocks = (offset + 7) >> 3;
 
