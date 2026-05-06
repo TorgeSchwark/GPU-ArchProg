@@ -120,6 +120,35 @@ __global__ void rect_kernel(float* __restrict__  A, float* __restrict__  B, floa
   improve performance of this call
 */
 
+__global__ void rect_kernel_critical(
+    float* __restrict__ A,
+    float* __restrict__ B,
+    float* __restrict__ C,
+    int N,
+    int offset)
+{
+    int lane = threadIdx.x & 31;        // 0..31
+    int warp_id = threadIdx.x >> 5;     // welcher warp im block
+
+    // wir bearbeiten nur den nächsten Block:
+    int row = (offset - WARP_SIZE) + warp_id;
+
+    if (row >= 0)
+    {
+        const float* __restrict__ Arow = A + row * N + offset;
+
+        float b = B[offset + lane];
+        float sum = Arow[lane] * b;
+
+        // warp reduction
+        for (int d = 16; d > 0; d >>= 1)
+            sum += __shfl_down_sync(0xffffffff, sum, d);
+
+        if (lane == 0)
+            C[row] -= sum;
+    }
+}
+
 void problem(float* devA, float* devB, float* devC, int N)
 {
     const int THREADS = 256;
@@ -131,6 +160,7 @@ void problem(float* devA, float* devB, float* devC, int N)
         
         tri_kernel<<<1, WARP_SIZE>>>(devA, devB, devC, N, offset);
 
+        
         int blocks = (offset + 7) >> 3;
 
         rect_kernel<<<blocks, THREADS>>>(devA, devB, devC, N, offset);

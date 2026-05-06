@@ -1,0 +1,23 @@
+Device name: NVIDIA GeForce RTX 3080 Ti Laptop GPU
+CC: 8.6
+#SM: 58
+CPU time taken:  8.40611 ms
+GPU time taken:  2.17664 ms
+Errors=0
+CPU time taken:  5.87139 ms
+GPU time taken:  2.19069 ms
+Errors=0
+CPU time taken:  6.79558 ms
+GPU time taken:  3.46227 ms
+Errors=0
+CPU time taken:  149.071 ms
+GPU time taken:  20.6325 ms
+Errors=0
+CPU time taken:  124.486 ms
+GPU time taken:  20.4195 ms
+Errors=0
+CPU time taken:  126.296 ms
+GPU time taken:  20.2978 ms
+Errors=0
+Total GPU time 69.1794 ms
+Unsupported GPU

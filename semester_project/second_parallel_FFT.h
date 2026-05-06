@@ -8,6 +8,6 @@
 // CUDA Parallel FFT (Host Wrapper)
 // Implemented in parallel_FFT.cu
 // ------------------------------------------------------------
-float parallel_fft_base_twiddle(std::vector<std::complex<float>>& data);
+float parallel_fft_base_twiddle(std::vector<std::complex<float>>& data, int threads);
 
 #endif // PARALLEL_FFT_H

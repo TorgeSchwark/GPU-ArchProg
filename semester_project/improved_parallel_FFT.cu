@@ -139,7 +139,7 @@ void fft_stage_kernel_fast(
 // ------------------------------------------------------------
 // FFT Host Wrapper
 // ------------------------------------------------------------
-double parallel_fft_fast(std::vector<std::complex<float>>& data)
+double parallel_fft_fast(std::vector<std::complex<float>>& data, int threads)
 {
 
     int N = data.size();
@@ -154,7 +154,6 @@ double parallel_fft_fast(std::vector<std::complex<float>>& data)
         N * sizeof(cuFloatComplex),
         cudaMemcpyHostToDevice));
 
-    int threads = 512; // TRY 128 and 512 256
     int blocks  = (N + threads - 1) / threads;
 
     // Twiddle generation track time of this halfe twiddle values dont need to be recomputed(Last call)

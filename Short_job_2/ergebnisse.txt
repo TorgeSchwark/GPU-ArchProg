@@ -1,0 +1,25 @@
+Total errors: 0 / 2048
+Device name: NVIDIA GeForce RTX 4070 Ti
+CC: 8.9
+#SM: 60
+CPU time taken:  21.0278 ms
+GPU time taken:  1.19949 ms
+Errors=0
+CPU time taken:  15.622 ms
+GPU time taken:  1.31613 ms
+Errors=0
+CPU time taken:  15.7143 ms
+GPU time taken:  1.08634 ms
+Errors=0
+CPU time taken:  341.869 ms
+GPU time taken:  9.74979 ms
+Errors=0
+CPU time taken:  314.735 ms
+GPU time taken:  8.79642 ms
+Errors=0
+CPU time taken:  314.106 ms
+GPU time taken:  9.19766 ms
+Errors=0
+Total GPU time 31.3458 ms
+SJ2 15 points
+schwajes@cf-prod-nod

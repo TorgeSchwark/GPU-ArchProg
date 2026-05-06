@@ -59,7 +59,7 @@ double benchmark_seq_fft(const std::vector<std::complex<float>>& data, int runs)
 // ------------------------------------------------------------
 // CUDA Benchmark
 // ------------------------------------------------------------
-double benchmark_cuda_fft(const std::vector<std::complex<float>>& data, int runs)
+double benchmark_cuda_fft(const std::vector<std::complex<float>>& data, int runs, int block_size)
 {
     double total = 0.0;
 
@@ -67,7 +67,7 @@ double benchmark_cuda_fft(const std::vector<std::complex<float>>& data, int runs
     {
         auto temp = data;
 
-        auto time = parallel_fft(temp);
+        auto time = parallel_fft(temp, block_size);
 
         total += time;
     }
@@ -144,7 +144,7 @@ double benchmark_fftw(const std::vector<std::complex<float>>& data, int runs)
     return total / runs;
 }
 
-double benchmark_base_twiddle_fft(const std::vector<std::complex<float>>& data, int runs)
+double benchmark_base_twiddle_fft(const std::vector<std::complex<float>>& data, int runs, int block_size)
 {
     double total = 0.0;
 
@@ -152,7 +152,7 @@ double benchmark_base_twiddle_fft(const std::vector<std::complex<float>>& data, 
     {
         auto temp = data;
 
-        auto time = parallel_fft_base_twiddle(temp);
+        auto time = parallel_fft_base_twiddle(temp, block_size);
 
         total += time;
     }
@@ -177,7 +177,7 @@ double benchmark_stockham_fft(const std::vector<std::complex<float>>& data, int 
 }
 
 
-double benchmark_precomputed(const std::vector<std::complex<float>>& data, int runs)
+double benchmark_precomputed(const std::vector<std::complex<float>>& data, int runs, int block_size)
 {
     double total = 0.0;
 
@@ -185,7 +185,7 @@ double benchmark_precomputed(const std::vector<std::complex<float>>& data, int r
     {
         auto temp = data;
 
-        auto time = parallel_fft_fast(temp);
+        auto time = parallel_fft_fast(temp, block_size);
 
         total += time;
     }
@@ -199,97 +199,56 @@ double benchmark_precomputed(const std::vector<std::complex<float>>& data, int r
 
 int main()
 {
-    const int runs = 10;
+    const int runs = 20;
+    const size_t N = 4194304;
+
+    auto data = generate_random_data(N);
 
     std::cout << std::left
-              << std::setw(16)  << "N"
-              << std::setw(16) << "seque (ms)"
-              << std::setw(16) << "CUDA (ms)"
-              << std::setw(16) << "FFTW (ms)"
-              << std::setw(16) << "CUDA TWIDLE (ms)"
-              << std::setw(16) << "CUDA Library (ms)"
+              << std::setw(12) << "Block"
+              << std::setw(16) << "cuFFT (ms)"
               << std::setw(16) << "Seq x"
-              << std::setw(16) << "CUDA x"
-              << std::setw(16) << "CUDA TWIDLE x"
-              << std::setw(16) << "CUDA PRECOMPUTED"
-              << std::setw(16) << "CUDA stockham"
+              << std::setw(16) << "Base x"
+              << std::setw(16) << "Pre x"
+              << std::setw(16) << "Normal x"
               << "\n";
 
-    std::cout << std::string(68, '-') << "\n";
+    std::cout << std::string(80, '-') << "\n";
 
-    for (int p = 8; p <= 26; ++p)   // 2^8 bis 2^14
+    // Reference once (outside loop)
+    auto ref_data = data;
+    fft(ref_data);
+
+    // cuFFT baseline
+    double cufft_time = benchmark_cufft(data, runs);
+
+    for (int block_size = 8; block_size <= 1024; block_size <<= 1)
     {
-        size_t N = 1ULL << p;
-        auto data = generate_random_data(N);
+        double base_sum = 0.0;
+        double seq_sum  = 0.0;
+        double pre_sum  = 0.0;
+        double norm_sum = 0.0;
 
-        // ----------------------------
-        // Korrektheit prüfen
-        // ----------------------------
-        auto seq_data  = data;
-        auto cuda_data = data;
-
-        fft(seq_data);
-        parallel_fft(cuda_data);
-
-        int n = N;
-        fftwf_complex* in  = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * n);
-        fftwf_complex* out = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * n);
-
-        fftwf_plan plan = fftwf_plan_dft_1d(n, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
-
-        for (int i = 0; i < n; ++i) {
-            in[i][0] = data[i].real();
-            in[i][1] = data[i].imag();
-        }
-
-        fftwf_execute(plan);
-
-        std::vector<std::complex<float>> ref(n);
-        for (int i = 0; i < n; ++i)
-            ref[i] = {out[i][0], out[i][1]};
-
-        fftwf_destroy_plan(plan);
-        fftwf_free(in);
-        fftwf_free(out);
-
-        if (!compare_fft(seq_data, ref, 10000000.0f))
+        for (int i = 0; i < runs; ++i)
         {
-            std::cout << "Sequential FFT incorrect for N = " << N << "\n";
-            return 1;
+            base_sum += benchmark_base_twiddle_fft(data, 1, block_size);
+            seq_sum  += benchmark_seq_fft(data, 1);
+            pre_sum  += benchmark_precomputed(data, 1, block_size);
+            norm_sum += benchmark_cuda_fft(data, 1, block_size);
         }
 
-        if (!compare_fft(cuda_data, ref, 10000000.0f))
-        {
-            std::cout << "CUDA FFT incorrect for N = " << N << "\n";
-            return 1;
-        }
-
-        // ----------------------------
-        // Benchmark
-        // ----------------------------
-        double cuda_time = benchmark_cuda_fft(data, runs);
-        double fftw_time = benchmark_fftw(data, runs);
-        double twiddle_time = benchmark_base_twiddle_fft(data, runs);
-        double seq_time = benchmark_seq_fft(data, runs);
-        double precomputed = benchmark_precomputed(data, runs);
-        double cuda_library = benchmark_cufft(data, runs);
-        double stockham = benchmark_stockham_fft(data, runs);
-
-
+        double base_avg = base_sum / runs;
+        double seq_avg  = seq_sum / runs;
+        double pre_avg  = pre_sum / runs;
+        double norm_avg = norm_sum / runs;
 
         std::cout << std::left
-                  << std::setw(16)  << N
-                  << std::setw(16) << std::fixed << std::setprecision(4) << seq_time
-                  << std::setw(16) << cuda_time
-                  << std::setw(16) << fftw_time
-                  << std::setw(16) << twiddle_time
-                  << std::setw(16) << cuda_library
-                  << std::setw(16) << seq_time / cuda_library
-                  << std::setw(16) << cuda_time / cuda_library
-                  << std::setw(16) << twiddle_time / cuda_library
-                  << std::setw(16) << precomputed / cuda_library
-                  << std::setw(16) << stockham / cuda_library
-
+                  << std::setw(12) << block_size
+                  << std::setw(16) << cufft_time
+                  << std::setw(16) << seq_avg / cufft_time
+                  << std::setw(16) << base_avg / cufft_time
+                  << std::setw(16) << pre_avg / cufft_time
+                  << std::setw(16) << norm_avg / cufft_time
                   << "\n";
     }
 

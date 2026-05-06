@@ -79,7 +79,7 @@ void fft_stage_kernel(cuFloatComplex* x, int N, int m)
 // ------------------------------------------------------------
 // Host Wrapper
 // ------------------------------------------------------------
-double parallel_fft(std::vector<std::complex<float>>& data)
+double parallel_fft(std::vector<std::complex<float>>& data, int threads)
 {
     int N = data.size();
 
@@ -96,7 +96,6 @@ double parallel_fft(std::vector<std::complex<float>>& data)
                           N * sizeof(cuFloatComplex),
                           cudaMemcpyHostToDevice));
 
-    int threads = 512;
     int blocks  = (N + threads - 1) / threads;
 
 

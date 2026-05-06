@@ -107,7 +107,7 @@ void fft_stage_kernel_base(
     x[i2] = cuCsubf(u, t);
 }
 
-float parallel_fft_base_twiddle(std::vector<std::complex<float>>& data)
+float parallel_fft_base_twiddle(std::vector<std::complex<float>>& data, int threads)
 {
     int N = data.size();
 
@@ -121,7 +121,6 @@ float parallel_fft_base_twiddle(std::vector<std::complex<float>>& data)
         N * sizeof(cuFloatComplex),
         cudaMemcpyHostToDevice));
 
-    int threads = 512;
     int blocks  = (N + threads - 1) / threads;
 
 
